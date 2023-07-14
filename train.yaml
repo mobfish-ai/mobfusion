@@ -1,0 +1,40 @@
+# training configure example
+
+# your task or model name
+name: xxx
+# something to comment
+comment: xxx
+script: train_db
+# webhook:
+
+dataset:
+  # Currently only supported local type.
+  type: local
+  path: /path/to/your/dataset
+
+train:
+  pretrained_model_name_or_path: /path/to/pretrained/model
+  v2: false
+  v_parameterization: false
+
+  num_train_epochs: 5
+  train_batch_size: 1
+  gradient_accumulation_steps: 1
+  # seed: -1
+  resolution: 512
+  learning_rate: 5e-6
+  dataloader_num_workers: 0
+  mixed_precision: fp16
+  enable_xformers_memory_efficient_attention: true
+  instance_prompt: "YOUR INSTANCE WORD"
+  lr_scheduler: constant
+
+
+# PLANNING...
+# publish:
+#   - target: huggingface
+#     token: xxx
+#     id: xxxxxx
+#   - target: civitai
+#     token: xxxx
+#     id: xxxxx
