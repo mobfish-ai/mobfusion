@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+
+import argparse
+import sys
+
+VERSION = "23.07-1"
+
+
+def parse_args(inputs=None):
+    p = argparse.ArgumentParser(description=f"Version: {VERSION}")
+
+    p.add_argument(
+        "--file",
+        "-f",
+        type=str,
+        help="Task configure file, in Yaml format.",
+    )
+    p.add_argument(
+        "--dry-run",
+        "-e",
+        action="store_true",
+        help="Parse config without run task.",
+    )
+
+    args, _ = p.parse_known_args(inputs or sys.argv)
+
+    return args
+
+
+def main(args: argparse.Namespace):
+    print(args)
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    main(args)

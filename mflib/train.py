@@ -63,22 +63,3 @@ def generate_command(args: argparse.Namespace):
 def train(args: argparse.Namespace):
     cmd = generate_command(args)
     run_task(cmd)
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("--file", "-f", type=str, required=True)
-
-    args, _ = parser.parse_known_args()
-
-    return args
-
-
-def main():
-    args = parse_args()
-    train(args)
-
-
-if __name__ == "__main__":
-    main()
