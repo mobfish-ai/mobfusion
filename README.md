@@ -2,7 +2,7 @@
 
 **⚠️ WIP**
 
-CAUTION, this project currently in experimental!
+CAUTION, this project currently is experimental!
 
 ## Prepare
 
