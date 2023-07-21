@@ -1,7 +1,8 @@
 from pathlib import Path
+import time
+import random
+import os
 from PIL.Image import Image
-import tempfile
-from mflib.webhook import send_file
 
 _IMAGE_EXTS = [".jpg", ".jpeg", ".png", ".webp"]
 
@@ -18,12 +19,37 @@ def list_dir_imgs(path: str):
     return imgs
 
 
-def send_webhook_samples(url: str, imgs: list[Image]):
-    files = []
-    with tempfile.TemporaryDirectory() as p:
-        for i, img in enumerate(imgs):
-            fp = str(Path(p) / f"{i}.png")
-            img.save(fp)
-            files.append(fp)
+def save_sample_images(
+    dir: str,
+    images: list[Image],
+    epoch: int,
+    steps: int,
+) -> list[str]:
+    p = Path(dir)
 
-        send_file(url, files)
+    files = []
+    for i, img in enumerate(images):
+        fn = str(p / f"epoch_{epoch}_steps_{steps}_{str(i).zfill(3)}.png")
+        img.save(fn)
+        files.append(fn)
+
+    return files
+
+
+def printt(*args):
+    print(f'[{time.strftime("%X")}]', *args)
+
+
+def make_task_dir(name: str, workspace: str):
+    root = Path(workspace)
+    ts = time.strftime(r"%y%m%d%H%M%S")
+    rd = random.randbytes(4).hex()
+    p = str(root / name.replace(r"%t", ts).replace(r"%r", rd))
+    os.makedirs(p, exist_ok=True)
+    return p
+
+
+def conf_reduce_to_str(conf: dict):
+    summary = f'Task name: {conf["name"]}'
+
+    return summary

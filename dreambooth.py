@@ -37,8 +37,9 @@ from diffusers import (
 from diffusers.optimization import get_scheduler
 from diffusers.utils.import_utils import is_xformers_available
 
-from mflib.util import send_webhook_samples
+import mflib.webhook as webhook
 from mflib.dataset import DreamBoothDataset
+from mflib.util import save_sample_images
 
 
 logger = get_logger(__name__)
@@ -104,6 +105,13 @@ def log_validation(
         }
     else:
         pipeline_args = {"prompt": args.validation_prompt}
+
+    # TODO: add param to control enable this feature
+    if pipeline.safety_checker is not None:
+        pipeline.safety_checker = lambda images, **kwargs: (
+            images,
+            list(map(lambda _: False, range(len(images)))),
+        )
 
     # run inference
     generator = (
@@ -206,6 +214,13 @@ def parse_args(input_args=None):
         default=None,
         required=False,
         help="A folder containing the training data of class images.",
+    )
+    parser.add_argument(
+        "--sample_image_dir",
+        type=str,
+        default=None,
+        required=False,
+        help="A folder to save sample images.",
     )
     parser.add_argument(
         "--instance_prompt",
@@ -853,7 +868,10 @@ def main(args):
                 if isinstance(model, type(accelerator.unwrap_model(unet)))
                 else "text_encoder"
             )
-            model.save_pretrained(os.path.join(output_dir, sub_dir))
+            model.save_pretrained(
+                os.path.join(output_dir, sub_dir),
+                safe_serialization=True,
+            )
 
             # make sure to pop weight so that corresponding model is not saved again
             weights.pop()
@@ -1124,6 +1142,12 @@ def main(args):
         * args.gradient_accumulation_steps
     )
 
+    if args.webhook is not None:
+        webhook.send_text(args.webhook, "Task running")
+
+    if args.sample_image_dir is not None:
+        os.makedirs(args.sample_image_dir, exist_ok=True)
+
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
     logger.info(f"  Num batches each epoch = {len(train_dataloader)}")
@@ -1363,8 +1387,22 @@ def main(args):
                             validation_prompt_negative_prompt_embeds,
                         )
 
-                        if args.webhook is not None:
-                            send_webhook_samples(args.webhook, images)
+                        if args.sample_image_dir is not None:
+                            imgs = save_sample_images(
+                                args.sample_image_dir,
+                                images,
+                                epoch,
+                                global_step,
+                            )
+
+                            for i in imgs:
+                                logger.info(i)
+
+                            if args.webhook is not None:
+                                webhook.send_file(args.webhook, imgs)
+
+                        elif args.webhook is not None:
+                            webhook.send_samples(args.webhook, images)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
@@ -1372,6 +1410,14 @@ def main(args):
 
             if global_step >= args.max_train_steps:
                 break
+
+        if args.webhook is not None:
+            webhook.send_text(
+                args.webhook,
+                f"""Epoch: {epoch}/{args.num_train_epochs}
+Loss: {round(loss.detach().item(), 3)}
+LR: {lr_scheduler.get_last_lr()[0]}""",
+            )
 
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
@@ -1406,7 +1452,7 @@ def main(args):
             pipeline.scheduler.config, **scheduler_args
         )
 
-        pipeline.save_pretrained(args.output_dir)
+        pipeline.save_pretrained(args.output_dir, safe_serialization=True)
 
     accelerator.end_training()
 

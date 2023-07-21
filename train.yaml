@@ -1,40 +1,144 @@
-# training configure example
+# ======================================================= #
+# | Task base info                                      | #
+# ======================================================= #
 
-# your task or model name
-name: xxx
-# something to comment
-comment: xxx
-script: train_db
-# webhook:
+# Task name
+# You can use magic code replace the task folder name
+# %t -> Timestamp
+# %r -> Random number
+name: "%t_xxx"
+comment: "This is a awesome task"
 
-dataset:
-  # Currently only supported local type.
-  type: local
-  path: /path/to/your/dataset
+# Workspace dir
+# Task will be saved to /workspace/task_name/
+# Models will be saved to /workspace/task_name/outputs
+# Sample images will be saved to /workspace/task_name/samples
+# Log files will be saved to /workspace/task_name/logs
+workspace: /path/to/workspace
 
-train:
-  pretrained_model_name_or_path: /path/to/pretrained/model
-  v2: false
-  v_parameterization: false
+# Task type
+# Currently avaliables: dreambooth
+script: dreambooth
 
-  num_train_epochs: 5
-  train_batch_size: 1
-  gradient_accumulation_steps: 1
-  # seed: -1
-  resolution: 512
-  learning_rate: 5e-6
-  dataloader_num_workers: 0
-  mixed_precision: fp16
-  enable_xformers_memory_efficient_attention: true
-  instance_prompt: "YOUR INSTANCE WORD"
-  lr_scheduler: constant
+# Optional, Discord webhook URL
+# If this field is not empty,
+# will send some progress info to to this webhook.
+webhook: https://discord.com/api/webhooks/xxxxx
 
 
-# PLANNING...
-# publish:
-#   - target: huggingface
-#     token: xxx
-#     id: xxxxxx
-#   - target: civitai
-#     token: xxxx
-#     id: xxxxx
+# ======================================================= #
+# | Dataset Configuration                               | #
+# ======================================================= #
+train_dataset: /path/to/dataset
+caption_ext: .txt
+
+# ======================================================= #
+# | Training Configuration                              | #
+# ======================================================= #
+
+# Pretrained model argument style
+# Only support diffusers format, target must be a directory.
+# eg. /home/xxx/models/stable-diffusion-v1-5
+pretrained: /path/to/pretrained
+
+num_process_per_core: 2
+
+# Convert to stable diffusion single file format
+convert_to_stable_diffusion: true
+
+# Optional, WIP
+resume: xxx
+
+# WIP
+# Optional, save_per_steps has priority.
+# You can pass zero or empty to skip.
+save_per_steps: 0
+save_per_epochs: 0
+
+# Train epochs
+epochs: 1
+
+batch_size: 1
+gradient_accumulation_steps: 1
+
+# -1 for random
+seed: -1
+resolution: 512
+learning_rate: 1e-5
+lr_warmup_steps: 0
+dataloader_workers: 4
+mixed_precision: fp16
+xformers: true
+
+# If dataset do not contains caption file,
+# it will be use this prompt for caption
+instance_prompt: "your prompt"
+
+# Others is coming soon
+lr_scheduler: constant
+offset_noise: 0
+max_train_steps: 32
+
+# Currently avialables: AdamW8bit, Lion8bit
+optimizer: AdamW8bit
+
+# ======================================================= #
+# | Sample Configuration                                | #
+# ======================================================= #
+
+sample_every_steps: 16
+sample_every_epochs: 10
+
+# Generate sample prompt,
+# you can use magic code to replace it
+# %i -> instance word
+# %c -> class word
+prompt: "%i, best quality"
+
+# or using a list file line by line
+# or pass a URL to download
+# this feature is coming soon
+prompt_list: xxx.txt
+
+# These params is coming soon
+# Optional, negative prompt
+neg_prompt: "lowres"
+sample_batch_size: 1
+sample_batch_count: 1
+width: 512
+height: 512
+steps: 20
+guidance_scale: 7
+# Defaults false, if true will generate a grid of images
+grid: false
+
+disable_safety_checker: true
+
+upload_to_s3: "s3://access_key:secret_key@endpoint/bucket/path?secure=true"
+push_to_webhook: true
+
+# ======================================================= #
+# | Publish Configuration                               | #
+# ======================================================= #
+
+# Coming soon
+push_to_hf: "modelid:token"
+push_to_cv: "modelid:token"
+
+# Push to git currently is available
+push_to_git: "ssh://git@endpoint:port/user/repo.git"
+
+# Optional, if this set true,
+# git will be initialize on task folder instead of output folder.
+# push_all_components: false
+
+# Git commit message template, you can use magic code
+# %n -> task name
+# %t -> task type
+# %T -> timestamp
+git_commit_message: "xxx"
+
+# If commit user is not configured in global,
+# you can pass it these using following fields
+git_user: xbol0
+git_email: xbolo@duck.com

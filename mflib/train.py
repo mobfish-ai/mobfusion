@@ -1,65 +1,131 @@
-import argparse
-import yaml
 import shlex
-import tempfile
-import time
-from subprocess import run
+import subprocess
 from pathlib import Path
+from mflib.webhook import send_text
+import math
 
 
-def run_task(cmd: str):
-    with tempfile.TemporaryDirectory() as dir:
-        print(f'[{time.strftime("%X")}] -->', dir)
+def run_task(cmd: str, dir: str, verbose=False, webhook: str = None):
+    root = Path(dir)
 
-        cmd += f' --output_dir {shlex.quote(str(Path(dir) / "output"))}'
-        cmd += f' --logging_dir {shlex.quote(str(Path(dir) / "logs"))}'
+    with open(root / "cmd.txt", "w") as f:
+        f.write(cmd)
 
-        print(f'[{time.strftime("%X")}] -->', cmd)
+    if verbose:
+        proc = subprocess.run(
+            cmd,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
 
-        out_fp = str(Path(dir) / "output.txt")
-        with open(out_fp, "w+") as out:
-            run(cmd, shell=True, stdout=out, stderr=out)
+        with open(root / "output.txt", "wb") as f:
+            f.write(proc.stdout)
 
-        print(f'[{time.strftime("%X")}] --> finished')
-
-
-def parse_dataset_config(conf: dict):
-    if "type" not in conf:
-        raise Exception("Unknown dataset type")
-
-    cmd = ""
-    if conf["type"] == "local":
-        cmd += f' --instance_data_dir {shlex.quote(conf["path"])}'
     else:
-        raise Exception(f"Unsupported dataset type: {conf['type']}")
+        with open(root / "output.txt", "wb") as f:
+            proc = subprocess.run(
+                cmd,
+                shell=True,
+                stdout=f,
+                stderr=f,
+            )
 
-    return cmd
-
-
-def generate_command(args: argparse.Namespace):
-    with open(args.file, "r") as f:
-        conf = yaml.safe_load(f)
-
-    for k in ["dataset", "name", "train", "script"]:
-        if not k in conf:
-            raise Exception(f"'{k}' not in config")
-
-    script = conf["script"]
-    cmd = parse_dataset_config(conf["dataset"])
-
-    for k, v in conf["train"].items():
-        if isinstance(v, str) and v != "":
-            cmd += f" --{k} {shlex.quote(v)}"
-        elif isinstance(v, bool) and v:
-            cmd += f" --{k}"
-        elif isinstance(v, int) and v != 0:
-            cmd += f" --{k} {shlex.quote(str(v))}"
-        elif isinstance(v, float) and v != 0.0:
-            cmd += f" --{k} {shlex.quote(str(v))}"
-
-    return f"accelerate launch --num_cpu_threads_per_process 2 {script}.py{cmd}"
+    if proc.returncode > 0 and webhook:
+        send_text(webhook, f"Failed returncode: {proc.returncode} dir: {dir}", True)
+    else:
+        send_text(webhook, f"Task finished: {dir}", True)
 
 
-def train(args: argparse.Namespace):
-    cmd = generate_command(args)
-    run_task(cmd)
+# TODO: add lora/lycoris support
+def convert_to_sd(dir: str):
+    p = Path(dir)
+    flags = f"--model_path {shlex.quote(str(p / 'outputs'))}"
+    flags += (
+        f' --checkpoint_path {shlex.quote(str(p / "outputs" / "model.safetensors"))}'
+    )
+    flags += " --use_safetensors"
+    proc = subprocess.run(
+        f"python pipeline/convert_to_sd.py {flags}",
+        shell=True,
+        capture_output=False,
+    )
+
+    if proc.returncode:
+        raise Exception(
+            f"Convert to Stable Diffusion format fail, return code: {proc.returncode}"
+        )
+
+
+def parse_optimizer_flags(conf: dict):
+    if "optimizer" not in conf:
+        return " --use_8bit_adam"
+
+    opt = conf["optimizer"]
+    flags = ""
+
+    # TODO: full optimizer params supported
+    if opt == "AdamW8bit":
+        flags += " --use_8bit_adam"
+    elif opt == "Lion8bit":
+        flags += " --use_8bit_lion"
+    else:
+        raise Exception(f"Unsupported optimizer: {opt}")
+
+    return flags
+
+
+def parse_sample_flags(conf: dict):
+    flags = ""
+
+    if "prompt" not in conf:
+        return flags
+
+    # TODO: full sample params supported
+    prompt = conf["prompt"].replace("%i", conf["instance_prompt"])
+    flags += f" --validation_prompt {shlex.quote(prompt)}"
+
+    sample_steps = conf["max_train_steps"]
+
+    if "sample_every_steps" in conf:
+        sample_steps = conf["sample_every_steps"]
+    elif "sample_every_epochs" in conf:
+        sample_steps = math.floor(
+            conf["sample_every_steps"] / conf["sample_every_epochs"]
+        )
+
+    flags += f" --validation_steps {sample_steps}"
+
+    return flags
+
+
+def parse_flags(conf: dict, root: str):
+    p = Path(root)
+
+    flags = f"--pretrained_model_name_or_path {shlex.quote(conf['pretrained'])}"
+    flags += f" --instance_data_dir {shlex.quote(conf['train_dataset'])}"
+    flags += f" --output_dir {shlex.quote(str(p / 'outputs'))}"
+    flags += f" --logging_dir {shlex.quote(str(p / 'logs'))}"
+    flags += f" --sample_image_dir {shlex.quote(str(p / 'samples'))}"
+    flags += f" --train_batch_size {shlex.quote(str(conf['batch_size']))}"
+    flags += f" --gradient_accumulation_steps {shlex.quote(str(conf['gradient_accumulation_steps']))}"
+    flags += f" --resolution {shlex.quote(str(conf['resolution']))}"
+    flags += f" --caption_ext {shlex.quote(conf['caption_ext'])}"
+    flags += f" --learning_rate {shlex.quote(conf['learning_rate'])}"
+    flags += f" --lr_scheduler {shlex.quote(conf['lr_scheduler'])}"
+    flags += f" --lr_warmup_steps {shlex.quote(str(conf['lr_warmup_steps']))}"
+    flags += f" --max_train_steps {shlex.quote(str(conf['max_train_steps']))}"
+    flags += f" --dataloader_num_workers {shlex.quote(str(conf['dataloader_workers']))}"
+
+    flags += f" --instance_prompt {shlex.quote(conf['instance_prompt'])}"
+    flags += parse_optimizer_flags(conf)
+
+    if "xformers" in conf and conf["xformers"]:
+        flags += " --enable_xformers_memory_efficient_attention"
+
+    flags += parse_sample_flags(conf)
+
+    if "webhook" in conf:
+        flags += f' --webhook {shlex.quote(conf["webhook"])}'
+
+    return flags

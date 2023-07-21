@@ -2,8 +2,22 @@
 
 import argparse
 import sys
+from mflib.util import printt, make_task_dir, conf_reduce_to_str
+import yaml
+from mflib.webhook import send_text
+import requests
+from mflib.train import parse_flags, run_task, convert_to_sd
+import signal
+from mflib.publish import push_to_git, format_commit_message
+from pathlib import Path
 
 VERSION = "23.07-1"
+_DELIM = "* ----------------------------------------- *"
+
+_SCRIPT_MAP = {
+    "dreambooth": "dreambooth.py",
+    # "lora": "dreambooth_lora.py",
+}
 
 
 def parse_args(inputs=None):
@@ -13,6 +27,7 @@ def parse_args(inputs=None):
         "--file",
         "-f",
         type=str,
+        required=True,
         help="Task configure file, in Yaml format.",
     )
     p.add_argument(
@@ -21,6 +36,13 @@ def parse_args(inputs=None):
         action="store_true",
         help="Parse config without run task.",
     )
+    p.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        default=False,
+        help="Show verbose output.",
+    )
 
     args, _ = p.parse_known_args(inputs or sys.argv)
 
@@ -28,7 +50,84 @@ def parse_args(inputs=None):
 
 
 def main(args: argparse.Namespace):
-    print(args)
+    if not args.file:
+        raise Exception("You must pass a file or URL for task configure.")
+
+    if args.file.startswith("http://") or args.file.startswith("https://"):
+        res = requests.get(args.file, stream=True)
+        conf = yaml.safe_load(res.raw)
+    else:
+        with open(args.file) as f:
+            conf = yaml.safe_load(f)
+
+    printt("Starting task")
+    printt(_DELIM)
+    printt(f"Origin task name: {conf['name']}")
+    printt(f"Comment: {conf['comment']}")
+    printt(f"Working directory: {conf['workspace']}")
+    printt(_DELIM)
+
+    printt("Prepare task workspace...")
+    p = make_task_dir(conf["name"], conf["workspace"])
+    printt(f"Task dir: {p}")
+    printt(_DELIM)
+
+    def _notify(text: str):
+        if "webhook" in conf:
+            send_text(conf["webhook"], text)
+
+    _notify(conf_reduce_to_str(conf))
+    flags = parse_flags(conf, p)
+    threads_per_core = int(
+        conf["num_process_per_core"] if "num_process_per_core" in conf else 2
+    )
+
+    script = _SCRIPT_MAP[conf["script"]]
+
+    cmd = f"accelerate launch --num_cpu_threads_per_process {threads_per_core} {script} {flags}"
+    printt(f"Following command will be run:\n{cmd}")
+    printt(_DELIM)
+
+    if args.dry_run:
+        return
+
+    if "webhook" in conf:
+
+        def _handle_signal(_0, _1):
+            printt("User cancelled manually")
+            send_text(conf["webhook"], f"User cancelled manually: {p}", True)
+            sys.exit(1)
+
+        signal.signal(signal.SIGINT, _handle_signal)
+
+    run_task(cmd, p, args.verbose, conf["webhook"] if "webhook" in conf else None)
+
+    printt("Task finished")
+
+    if "convert_to_stable_diffusion" in conf and conf["convert_to_stable_diffusion"]:
+        printt(_DELIM)
+        printt("Converting to Stable Diffusion format")
+
+        try:
+            convert_to_sd(p)
+        except Exception as e:
+            if "webhook" in conf:
+                send_text(conf["webhook"], str(e), True)
+
+        printt("Converted")
+        printt(_DELIM)
+
+    if "push_to_git" in conf:
+        printt(f"Push to git: {conf['push_to_git']}")
+        push_to_git(
+            str(Path(p) / "outputs"),
+            conf["push_to_git"],
+            format_commit_message(conf),
+            conf["git_user"] if "git_user" in conf else None,
+            conf["git_email"] if "git_email" in conf else None,
+        )
+
+        printt(_DELIM)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,16 @@
 
 CAUTION, this project currently in experimental!
 
+## Prepare
+
+Currently you have to prepare pretrained models and datasets manually.
+
+Download Huggingface models via git lfs, eg.
+
+```shell
+git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
+```
+
 ## Usage
 
 ```shell
@@ -20,3 +30,8 @@ export LD_LIBRARY_PATH=/home/xxx/miniforge3/envs/xxx/lib/python3.10/site-package
 # step 3. start your training
 python train.py -f train.yaml
 ```
+
+## TODO
+
+- [ ] Add `dadaptation` support
+- [ ] Add Lora/Lycoris support
