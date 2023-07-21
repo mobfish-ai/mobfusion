@@ -26,9 +26,15 @@ pip install -U -r requirements_dev.txt
 export LD_LIBRARY_PATH=/home/xxx/miniforge3/envs/xxx/lib/python3.10/site-packages/nvidia/cuda_runtime/lib:$LD_LIBRARY_LATH
 
 # step 1. prepare your dataset
+# eg.
+git clone https://yourdataset /path/to/dataset
+
 # step 2. prepare your config file: train.yaml
+cp train.yaml your_conf.yaml
+vim your_conf.yaml
+
 # step 3. start your training
-python train.py -f train.yaml
+./mobfusion -f your_conf.yaml
 ```
 
 ## TODO
