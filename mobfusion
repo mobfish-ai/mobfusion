@@ -82,9 +82,17 @@ def main(args: argparse.Namespace):
         conf["num_process_per_core"] if "num_process_per_core" in conf else 2
     )
 
+    if conf["script"] not in _SCRIPT_MAP:
+        raise Exception(f"DO NOT Supported script: {conf['script']}")
+
     script = _SCRIPT_MAP[conf["script"]]
 
-    cmd = f"accelerate launch --num_cpu_threads_per_process {threads_per_core} {script} {flags}"
+    cmd = "accelerate launch"
+    cmd += f" --num_cpu_threads_per_process {threads_per_core}"
+    if "gpu_ids" in conf:
+        cmd += f' --gpu_ids {conf["gpu_ids"]}'
+    cmd += " " + script + " " + flags
+
     printt(f"Following command will be run:\n{cmd}")
     printt(_DELIM)
 

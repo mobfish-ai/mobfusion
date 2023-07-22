@@ -3,6 +3,7 @@ import subprocess
 from pathlib import Path
 from mflib.webhook import send_text
 import math
+import sys
 
 
 def run_task(cmd: str, dir: str, verbose=False, webhook: str = None):
@@ -15,12 +16,9 @@ def run_task(cmd: str, dir: str, verbose=False, webhook: str = None):
         proc = subprocess.run(
             cmd,
             shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stdout=sys.stdout,
+            stderr=sys.stdout,
         )
-
-        with open(root / "output.txt", "wb") as f:
-            f.write(proc.stdout)
 
     else:
         with open(root / "output.txt", "wb") as f:
