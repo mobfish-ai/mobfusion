@@ -5,32 +5,44 @@ from pathlib import Path
 import threading
 
 
-# TODO: handle exception
+def __send_discord(url: str, data, is_file=False):
+    try:
+        if is_file:
+            requests.post(url, files=data, timeout=3.0)
+        else:
+            requests.post(url, json=data, timeout=3.0)
+    except:
+        pass
+    finally:
+        if is_file:
+            for f in data.values():
+                f.close()
+
+
 def send_text(url: str, text: str, signal=False):
     if signal:
-        requests.post(url, json={"content": text})
+        __send_discord(url, {"content": text})
     else:
         threading.Thread(
-            target=lambda: requests.post(url, json={"content": text}),
+            target=__send_discord,
             daemon=True,
+            args=(url, {"content": text}),
         ).start()
 
 
 def send_file(url: str, files: list[str]):
-    def target():
-        file_list = {f"files[{i}]": open(name, "rb") for i, name in enumerate(files)}
-        try:
-            requests.post(url, files=file_list)
-        finally:
-            for f in file_list.values():
-                f.close()
+    file_list = {f"files[{i}]": open(name, "rb") for i, name in enumerate(files)}
 
-    threading.Thread(target=target, daemon=True).start()
+    threading.Thread(
+        target=__send_discord,
+        daemon=True,
+        args=(url, file_list, True),
+    ).start()
 
 
 def send_samples(url: str, imgs: list[Image]):
-    files = []
     with tempfile.TemporaryDirectory() as p:
+        files = []
         for i, img in enumerate(imgs):
             fp = str(Path(p) / f"{i}.png")
             img.save(fp)
